@@ -1,23 +1,24 @@
-import streamlit as st
+import os
+import io
+import time
+import requests
 import pandas as pd
+import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-import requests
-import io
-import time
 
 # ---------------------------------------------------------
-# 1. CONFIGURACIÓN GENERAL Y ESTILOS EJECUTIVOS BI
+# 1. CONFIGURACIÓN DE PÁGINA Y ESTILOS BI ENTERPRISE
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Monitor de Incidentes - WFM & ANS", 
+    page_title="Monitor DP & Atención Inmediata - PROING", 
     page_icon="⚡", 
     layout="wide", 
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS de Grado BI Enterprise
+# Estilos visuales con paleta de colores para control de días
 st.markdown('''
 <style>
     .main { background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -48,7 +49,7 @@ st.markdown('''
     .kpi-val { font-size: 2.1rem; font-weight: 900; line-height: 1; }
     .kpi-sub { font-size: 0.72rem; color: #64748b; margin-top: 0.3rem; font-weight: 500; }
 
-    /* Semaforización ANS */
+    /* Paleta de Colores de Alerta SLA */
     .kpi-vencido { border-left: 5px solid #dc2626; } .kpi-vencido .kpi-label { color: #dc2626; } .kpi-vencido .kpi-val { color: #991b1b; }
     .kpi-limite { border-left: 5px solid #d97706; } .kpi-limite .kpi-label { color: #d97706; } .kpi-limite .kpi-val { color: #92400e; }
     .kpi-tiempo { border-left: 5px solid #16a34a; } .kpi-tiempo .kpi-label { color: #16a34a; } .kpi-tiempo .kpi-val { color: #166534; }
@@ -60,7 +61,7 @@ st.markdown('''
 </style>
 ''', unsafe_allow_html=True)
 
-# Mapeo Inteligente de Circuitos a Sectores Operativos (Centro / Norte)
+# Mapeo Inteligente de Circuitos y Subestaciones a Sectores Operativos (Centro / Norte)
 CIRCUITOS_SECTOR_MAP = {
     "LIBANO": "NORTE", "LERIDA": "NORTE", "MARIQUITA": "NORTE", "FRESNO": "NORTE", "VENADILLO": "NORTE", 
     "HONDA": "NORTE", "GUAYABAL": "NORTE", "PALOCABILDO": "NORTE", "HERVEO": "NORTE", "JUNIN": "NORTE", 
@@ -79,19 +80,18 @@ def obtener_sector_operativo(circuito, subestacion):
     return "CENTRO"
 
 # ---------------------------------------------------------
-# 2. ENCABEZADO Y BARRA LATERAL (CONFIGURACIÓN GITHUB)
+# 2. ENCABEZADO Y FUENTE DE DATOS
 # ---------------------------------------------------------
 st.markdown('''
 <div class="hero-banner">
     <div>
-        <h1 class="hero-title">⚡ Monitor de Incidentes Operativos & ANS WFM</h1>
-        <p class="hero-subtitle">Control de Tiempos de Atención Inmediata (Sin DP / ASIG) &nbsp;|&nbsp; <b>SLA Urbano:</b> ≤ 1 día &nbsp;•&nbsp; <b>SLA Rural:</b> ≤ 3 días</p>
+        <h1 class="hero-title">⚡ Control de Incidentes & Tiempo Sin Servicio</h1>
+        <p class="hero-subtitle">Seguimiento Operativo ANS &nbsp;|&nbsp; <b>SLA Urbano:</b> ≤ 1 día &nbsp;•&nbsp; <b>SLA Rural:</b> ≤ 3 días</p>
     </div>
-    <div><span class="status-pill">● MONITOREO ACTIVO</span></div>
+    <div><span class="status-pill">● SISTEMA ACTIVO</span></div>
 </div>
 ''', unsafe_allow_html=True)
 
-# URL RAW de GitHub (Reemplaza con el enlace Raw de tu repositorio si deseas carga automática)
 URL_RAW_GITHUB = "https://raw.githubusercontent.com/TU_USUARIO/TU_REPOSITORIO/main/Navegador%20de%20incidentes.xlsx"
 
 with st.sidebar:
@@ -99,18 +99,14 @@ with st.sidebar:
     st.title("Centro de Control")
     st.markdown("---")
     
-    # Opción A: Cargar archivo manualmente (Actualización Instantánea 0s)
+    # Carga manual (CERO espera)
     archivo_subido = st.file_uploader("📂 Cargar Reporte WFM (.xlsx)", type=["xlsx", "xls"])
     
     st.markdown("---")
-    
-    # Filtro Estricto de Instrucción
     solo_vacios = st.toggle("🚫 Excluir DP / DP BT / ASIG (Solo Instrucción en Blanco)", value=True)
-    
     st.markdown("---")
-    st.caption("<b>SLA Mantenimiento:</b><br>• Urbano: ≤ 1 día<br>• Rural: ≤ 3 días", unsafe_allow_html=True)
+    st.caption("<b>Límites de Atención ANS:</b><br>• Sector Urbano: ≤ 1 día<br>• Sector Rural: ≤ 3 días", unsafe_allow_html=True)
 
-# Cargar desde GitHub Raw sin problemas de Caché
 @st.cache_data(ttl=60)
 def cargar_desde_github_raw(url):
     try:
@@ -133,11 +129,11 @@ else:
     archivo_a_usar = cargar_desde_github_raw(URL_RAW_GITHUB)
 
 if archivo_a_usar is None:
-    st.info("👋 Por favor, carga el archivo Excel exportado de WFM en la barra lateral.")
+    st.info("👋 Por favor, carga el archivo Excel exportado de WFM desde la barra lateral.")
     st.stop()
 
 # ---------------------------------------------------------
-# 3. PROCESAMIENTO Y FILTRADO DE DATOS
+# 3. LECTURA Y PROCESAMIENTO
 # ---------------------------------------------------------
 try:
     if hasattr(archivo_a_usar, 'seek'):
@@ -158,7 +154,7 @@ try:
     df.columns = df.columns.astype(str).str.strip()
     df = df.loc[:, ~df.columns.duplicated()].copy()
 
-    # FILTRO SOLICITADO: EXCLUIR DP, DP BT, ASIG (SOLO CAMPOS VACÍOS EN INSTRUCCIÓN)
+    # Filtro opcional de instrucción en blanco
     def es_instruccion_vacia(val):
         if pd.isna(val) or val is None:
             return True
@@ -169,10 +165,10 @@ try:
         df = df[df['Instrucción'].apply(es_instruccion_vacia)].copy().reset_index(drop=True)
 
     if df.empty:
-        st.warning("⚠️ No se encontraron incidentes con el filtro de Instrucción en blanco.")
+        st.warning("⚠️ No existen registros con el filtro de Instrucción en blanco aplicado.")
         st.stop()
 
-    # Normalización de Columnas Clave
+    # Columnas principales
     sub_col = [c for c in df.columns if 'subestaci' in c.lower()]
     df['Subestación'] = df[sub_col[0]].fillna('SIN SUBESTACIÓN').astype(str) if sub_col else 'SIN SUBESTACIÓN'
 
@@ -192,10 +188,9 @@ try:
     else:
         df['Clientes Sin Servicio'] = 0
 
-    # Sector Operativo (Centro vs Norte)
     df['Sector Operativo'] = df.apply(lambda r: obtener_sector_operativo(r['Circuito'], r['Subestación']), axis=1)
 
-    # Clasificación Urbano vs Rural
+    # Clasificación Urbano / Rural
     def clasificar_urbano_rural(direccion):
         dir_upper = str(direccion).upper()
         rurales = ['VDA', 'VEREDA', 'FCA', 'FINCA', 'CORREGIMIENTO']
@@ -203,7 +198,7 @@ try:
 
     df['Tipo de Sector'] = df['Dirección'].apply(clasificar_urbano_rural)
 
-    # Cálculo de Fechas, Días y Horas Transcurridas
+    # Cálculo exacto de Días y Horas Sin Servicio
     if 'Fecha de creación' in df.columns:
         df['Fecha_Creacion_DT'] = pd.to_datetime(df['Fecha de creación'], errors='coerce')
     else:
@@ -223,7 +218,7 @@ try:
 
     df['Tiempo_Transcurrido_Str'] = df['Horas_Transcurridas'].apply(formato_hhmmss)
 
-    # Evaluación SLA / ANS
+    # Semaforización ANS
     def estado_sla(row):
         limite_dias = 3 if row['Tipo de Sector'] == 'RURAL' else 1
         if row['Días Sin Servicio'] > limite_dias:
@@ -236,7 +231,7 @@ try:
     df['Estado SLA'] = df.apply(estado_sla, axis=1)
 
     # ---------------------------------------------------------
-    # 4. PANEL DE FILTROS (SECTOR OPERATIVO: CENTRO / NORTE)
+    # 4. PANEL DE FILTROS INTERACTIVOS
     # ---------------------------------------------------------
     st.markdown('<div style="background:#fff; padding:1.2rem; border-radius:12px; border:1px solid #e2e8f0; margin-bottom:1.2rem;">', unsafe_allow_html=True)
     f1, f2, f3, f4 = st.columns([2, 2.5, 2.5, 1])
@@ -262,7 +257,7 @@ try:
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Aplicación de filtros
+    # Filtro
     df_filtrado = df[
         (df['Sector Operativo'].isin(sectores_op_sel)) &
         (df['Subestación'].isin(subs_sel)) &
@@ -270,50 +265,47 @@ try:
     ].copy().reset_index(drop=True)
 
     if df_filtrado.empty:
-        st.warning("⚠️ No hay incidentes que coincidan con la combinación de filtros seleccionada.")
+        st.warning("⚠️ No coinciden incidentes para los filtros seleccionados.")
         st.stop()
 
     # ---------------------------------------------------------
-    # 5. APARTADO RÁPIDO: MÉTRICAS Y RESUMEN EJECUTIVO (KPIS)
+    # 5. KPIS RAPIDOS SUPERIORES
     # ---------------------------------------------------------
     cnt_total_avisos = len(df_filtrado)
     cnt_centro = len(df_filtrado[df_filtrado['Sector Operativo'] == 'CENTRO'])
     cnt_norte = len(df_filtrado[df_filtrado['Sector Operativo'] == 'NORTE'])
     cnt_circuitos = df_filtrado['Circuito'].nunique()
     cnt_afectados_totales = int(df_filtrado['Clientes Sin Servicio'].sum())
-
     cnt_vencidos = int((df_filtrado['Estado SLA'] == 'Vencido').sum())
-    cnt_limite = int((df_filtrado['Estado SLA'] == 'Al Límite').sum())
-    cnt_tiempo = int((df_filtrado['Estado SLA'] == 'A Tiempo').sum())
 
     k1, k2, k3, k4, k5 = st.columns(5)
     with k1:
-        st.markdown(f'''<div class="kpi-card"><div class="kpi-label">📋 Contador Avisos</div><div class="kpi-val" style="color:#0284c7;">{cnt_total_avisos}</div><div class="kpi-sub">Atención Inmediata</div></div>''', unsafe_allow_html=True)
+        st.markdown(f'''<div class="kpi-card"><div class="kpi-label">📋 Contador Avisos</div><div class="kpi-val" style="color:#0284c7;">{cnt_total_avisos}</div><div class="kpi-sub">Total Incidentes</div></div>''', unsafe_allow_html=True)
     with k2:
         st.markdown(f'''<div class="kpi-card"><div class="kpi-label">🗺️ Avisos por Zona</div><div class="kpi-val" style="color:#334155;">{cnt_centro} <span style="font-size:1rem; color:#64748b;">C</span> | {cnt_norte} <span style="font-size:1rem; color:#64748b;">N</span></div><div class="kpi-sub">Centro vs Norte</div></div>''', unsafe_allow_html=True)
     with k3:
-        st.markdown(f'''<div class="kpi-card"><div class="kpi-label">🔌 Circuitos Afectados</div><div class="kpi-val" style="color:#475569;">{cnt_circuitos}</div><div class="kpi-sub">Circuitos en servicio</div></div>''', unsafe_allow_html=True)
+        st.markdown(f'''<div class="kpi-card"><div class="kpi-label">🔌 Circuitos Afectados</div><div class="kpi-val" style="color:#475569;">{cnt_circuitos}</div><div class="kpi-sub">Circuitos activos</div></div>''', unsafe_allow_html=True)
     with k4:
-        st.markdown(f'''<div class="kpi-card kpi-clientes"><div class="kpi-label">👥 Clientes Afectados</div><div class="kpi-val">{cnt_afectados_totales:,}</div><div class="kpi-sub">Clientes sin energía</div></div>''', unsafe_allow_html=True)
+        st.markdown(f'''<div class="kpi-card kpi-clientes"><div class="kpi-label">👥 Clientes Afectados</div><div class="kpi-val">{cnt_afectados_totales:,}</div><div class="kpi-sub">Clientes sin servicio</div></div>''', unsafe_allow_html=True)
     with k5:
-        st.markdown(f'''<div class="kpi-card kpi-vencido"><div class="kpi-label">🔴 Vencidos SLA</div><div class="kpi-val">{cnt_vencidos}</div><div class="kpi-sub">Exceden tiempo ANS</div></div>''', unsafe_allow_html=True)
+        st.markdown(f'''<div class="kpi-card kpi-vencido"><div class="kpi-label">🔴 Vencidos SLA</div><div class="kpi-val">{cnt_vencidos}</div><div class="kpi-sub">Exceden Límite ANS</div></div>''', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ---------------------------------------------------------
-    # 6. PESTAÑAS DETALLADAS SOLICITADAS
+    # 6. PESTAÑAS OPERATIVAS
     # ---------------------------------------------------------
     tab_tiempos, tab_avisos, tab_circuitos, tab_sla = st.tabs([
         "⏱️ Contador de Horas (Mayor a Menor)", 
         "👥 Control Avisos (Clientes Afectados)", 
-        "🔌 Cantidad de Incidentes por Circuito",
+        "🔌 Incidentes por Circuito",
         "🚨 Semaforización & Cumplimiento ANS"
     ])
 
-    # PESTAÑA 1: CONTADOR DE HORAS ORGANIZADO DE MAYOR A MENOR TIEMPO
+    # 1. CONTADOR DE HORAS ORGANIZADO DE MAYOR A MENOR TIEMPO
     with tab_tiempos:
-        st.subheader("⏱️ Contador de Tiempo Transcurrido (Organizado de Mayor a Menor)")
-        st.caption("Visualiza los incidentes priorizados de mayor a menor tiempo transcurrido desde su creación.")
+        st.subheader("⏱️ Contador de Tiempo Transcurrido (Mayor a Menor)")
+        st.caption("Organizado jerárquicamente de mayor a menor según las horas que el cliente lleva sin servicio.")
 
         df_tiempos = df_filtrado.sort_values(by='Horas_Transcurridas', ascending=False).reset_index(drop=True)
 
@@ -337,10 +329,9 @@ try:
             height=450
         )
 
-    # PESTAÑA 2: CONTROL AVISOS (CLIENTES AFECTADOS: ID, CUADRILLA, AFECTADOS)
+    # 2. CONTROL AVISOS (ID, CUADRILLA, AFECTADOS)
     with tab_avisos:
         st.subheader("👥 Control Avisos — Clientes Afectados por Incidente y Cuadrilla")
-        st.caption("Detalle específico de Identificación del incidente, Cuadrilla asignada y Clientes Afectados.")
 
         df_avisos = df_filtrado.sort_values(by='Clientes Sin Servicio', ascending=False).reset_index(drop=True)
 
@@ -355,11 +346,11 @@ try:
                 height=420
             )
         with a2:
-            st.markdown("##### 📊 Top Cuadrillas con Más Clientes")
+            st.markdown("##### 📊 Top Cuadrillas")
             cuad_summary = df_filtrado.groupby('Cuadrilla', as_index=False)['Clientes Sin Servicio'].sum().sort_values(by='Clientes Sin Servicio', ascending=False)
             st.dataframe(cuad_summary.reset_index(drop=True), use_container_width=True, height=360)
 
-    # PESTAÑA 3: CANTIDAD DE INCIDENTES POR CIRCUITO
+    # 3. CANTIDAD DE INCIDENTES POR CIRCUITO
     with tab_circuitos:
         st.subheader("🔌 Cantidad de Incidentes Discriminados por Circuito")
         
@@ -385,9 +376,9 @@ try:
             st.markdown("##### 📋 Resumen por Circuito")
             st.dataframe(circ_df, use_container_width=True, height=380)
 
-    # PESTAÑA 4: SEMAFORIZACIÓN ANS & CUMPLIMIENTO
+    # 4. SEMAFORIZACIÓN ANS
     with tab_sla:
-        st.subheader("🚨 Semaforización & Cumplimiento ANS de Tiempos")
+        st.subheader("🚨 Semaforización y Cumplimiento de Tiempos ANS")
         colores_map = {'A Tiempo': '#00B050', 'Al Límite': '#FFC000', 'Vencido': '#C00000'}
 
         s1, s2 = st.columns([2, 3])
@@ -416,4 +407,4 @@ try:
             st.plotly_chart(fig_top, use_container_width=True)
 
 except Exception as e:
-    st.error(f"❌ Error al procesar el archivo Excel: {e}")
+    st.error(f"❌ Ocurrió un error procesando el reporte Excel: {e}")
