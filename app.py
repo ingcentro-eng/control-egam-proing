@@ -334,16 +334,23 @@ try:
         cnt_circuitos = df_filtrado['Circuito'].nunique()
         cnt_afectados = int(df_filtrado['Clientes Sin Servicio'].sum())
 
+        # Lógica dinámica para la subetiqueta del KPI "Avisos por Zona"
+        if len(sectores_op_sel) == len(sectores_op_disponibles):
+            subetiqueta_zona = "Centro y Norte"
+        elif len(sectores_op_sel) == 1:
+            subetiqueta_zona = f"Sector {sectores_op_sel[0].title()}"
+        else:
+            subetiqueta_zona = "Sin Selección"
+
         k1, k2, k3, k4 = st.columns(4)
         with k1:
             st.markdown(f'''<div class="kpi-card"><div class="kpi-label">Contador Avisos</div><div class="kpi-val" style="color:#0284c7;">{cnt_avisos}</div><div class="kpi-sub">Avisos WFM Activos</div></div>''', unsafe_allow_html=True)
         with k2:
             st.markdown(f'''<div class="kpi-card"><div class="kpi-label">Circuitos Afectados</div><div class="kpi-val" style="color:#0f172a;">{cnt_circuitos}</div><div class="kpi-sub">Circuitos en seguimiento</div></div>''', unsafe_allow_html=True)
         with k3:
-            st.markdown(f'''<div class="kpi-card"><div class="kpi-label">Avisos por Zona</div><div class="kpi-val" style="color:#0369a1;">{cnt_avisos}</div><div class="kpi-sub">Centro / Norte</div></div>''', unsafe_allow_html=True)
+            st.markdown(f'''<div class="kpi-card"><div class="kpi-label">Avisos por Zona</div><div class="kpi-val" style="color:#0369a1;">{cnt_avisos}</div><div class="kpi-sub">📍 {subetiqueta_zona}</div></div>''', unsafe_allow_html=True)
         with k4:
             st.markdown(f'''<div class="kpi-card"><div class="kpi-label">Total Clientes Afectados</div><div class="kpi-val" style="color:#d97706;">{cnt_afectados:,}</div><div class="kpi-sub">Afectación total real</div></div>''', unsafe_allow_html=True)
-
         st.markdown("<br>", unsafe_allow_html=True)
 
         col1, col2, col3 = st.columns([1.1, 1.2, 1])
