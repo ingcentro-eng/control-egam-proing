@@ -174,16 +174,27 @@ try:
         es_csv = True
 
     if es_csv:
-        df_temp = pd.read_csv(archivo_a_usar, nrows=15)
-        header_idx = 0
-        for i in range(len(df_temp)):
-            fila = [str(c).lower() for c in df_temp.iloc[i].tolist()]
-            if any('identificaci' in c for c in fila) and any('instrucci' in c for c in fila):
-                header_idx = i + 1
+        # 1. Intentar determinar separador (';' o ',')
+        df_raw = pd.read_csv(archivo_a_usar, nrows=15, header=None)
+        
+        # Buscar la fila que contiene las columnas reales
+        header_idx = 5
+        sep_usado = ';'
+        
+        for i in range(min(15, len(df_raw))):
+            fila_str = " ".join([str(x) for x in df_raw.iloc[i].values]).lower()
+            if 'identificaci' in fila_str and ('afectados' in fila_str or 'circuito' in fila_str):
+                header_idx = i
+                if ';' in fila_str:
+                    sep_usado = ';'
+                elif ',' in fila_str:
+                    sep_usado = ','
                 break
+                
         if hasattr(archivo_a_usar, 'seek'):
             archivo_a_usar.seek(0)
-        df = pd.read_csv(archivo_a_usar, header=header_idx)
+            
+        df = pd.read_csv(archivo_a_usar, header=header_idx, sep=sep_usado)
     else:
         df_temp = pd.read_excel(archivo_a_usar, header=None, nrows=15)
         header_idx = 5
@@ -196,6 +207,7 @@ try:
             archivo_a_usar.seek(0)
         df = pd.read_excel(archivo_a_usar, header=header_idx)
 
+    # Limpieza de nombres de columnas
     df.columns = df.columns.astype(str).str.strip()
     df = df.loc[:, ~df.columns.duplicated()].copy()
 
@@ -228,7 +240,16 @@ try:
     cuad_col = [c for c in df_wfm.columns if 'cuadrilla' in c.lower()]
     df_wfm['Cuadrilla'] = df_wfm[cuad_col[0]].fillna('SIN ASIGNAR').astype(str) if cuad_col else 'SIN ASIGNAR'
 
-    afect_col = [c for c in df_wfm.columns if 'afectado' in c.lower() or 'clientes' in c.lower()]
+    # --- LÓGICA OPTIMIZADA DE AFECTADOS ---
+    # Busca prioritariamente 'Afectados' (Afectación total del evento)
+    afect_col = [c for c in df_wfm.columns if c.strip().lower() == 'afectados']
+    if not afect_col:
+        # Si no la encuentra exacta, busca coincidencia parcial
+        afect_col = [c for c in df_wfm.columns if 'afectado' in c.lower() and 'critico' not in c.lower()]
+    if not afect_col:
+        # Fallback a 'Clientes no restaurados'
+        afect_col = [c for c in df_wfm.columns if 'clientes no restaurados' in c.lower()]
+
     if afect_col:
         df_wfm['Clientes Sin Servicio'] = pd.to_numeric(df_wfm[afect_col[0]], errors='coerce').fillna(0).astype(int)
     else:
