@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control EGAM PROING - WFM & KPI 3 (Atención Inmediata)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS CDN para procesamiento de Excel/CSV en navegador -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- Chart.js CDN para visualización interactiva -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-slate-100 font-sans p-4 md:p-6 text-slate-800">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- Encabezado Principal -->
+        <header class="bg-slate-900 text-white shadow-xl rounded-2xl p-6 mb-6 flex flex-col md:flex-row justify-between items-center border-l-8 border-sky-500">
+            <div class="flex items-center space-x-4 mb-4 md:mb-0">
+                <div class="bg-sky-500/20 border border-sky-400/30 p-3 rounded-xl text-sky-400 text-3xl">⚡</div>
+                <div>
+                    <h1 class="text-xl md:text-2xl font-black tracking-tight text-white">CONTROL EGAM PROING — CONTRATO 013-26</h1>
+                    <p class="text-slate-400 text-xs md:text-sm font-semibold mt-1">Seguimiento WFM Tiempos & Control KPI 3 (Rangos de Clientes) — Centro y Norte</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <label class="bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-bold py-2.5 px-5 rounded-xl cursor-pointer shadow-lg transition flex items-center space-x-2 text-sm border border-sky-400/30">
+                    <span>📁 Cargar Reporte WFM (.xlsx / .csv)</span>
+                    <input type="file" id="fileUpload" class="hidden" accept=".xlsx, .xls, .csv">
+                </label>
+            </div>
+        </header>
+
+        <!-- Navegación por Pestañas Operativas -->
+        <div class="flex space-x-3 mb-6 border-b border-slate-200 pb-3 overflow-x-auto">
+            <button onclick="switchTab('wfm')" id="tabWfm" class="px-5 py-2.5 rounded-xl font-bold text-sm bg-sky-600 text-white shadow transition flex items-center space-x-2 shrink-0">
+                <span>⏱️ Pestaña 1: WFM (Atención Inmediata)</span>
+            </button>
+            <button onclick="switchTab('kpi')" id="tabKpi" class="px-5 py-2.5 rounded-xl font-bold text-sm bg-white text-slate-600 border border-slate-300 shadow-sm transition flex items-center space-x-2 shrink-0">
+                <span>📊 Pestaña 2: Control KPI 3 (Excluye DP / ASIG)</span>
+            </button>
+        </div>
+
+        <!-- ==================== PESTAÑA 1: SEGUIMIENTO WFM (INSTRUCCIÓN EN BLANCO) ==================== -->
+        <div id="sectionWfm" class="space-y-6">
+            <!-- Barra de Filtros WFM -->
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Sector Operativo:</label>
+                    <select id="wfmSectorFilter" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm bg-slate-50 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        <option value="ALL">Todos los Sectores</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Subestación:</label>
+                    <select id="wfmSubFilter" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm bg-slate-50 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        <option value="ALL">Todas las Subestaciones</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Circuito:</label>
+                    <select id="wfmCircuitFilter" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm bg-slate-50 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        <option value="ALL">Todos los Circuitos</option>
+                    </select>
+                </div>
+                <div class="flex items-end pt-1 md:pt-5">
+                    <button id="wfmResetFilters" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2.5 px-4 rounded-xl text-sm transition flex justify-center items-center space-x-2">
+                        <span>🔄 Limpiar Filtros</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tarjetas KPIs WFM -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between border-l-4 border-sky-500">
+                    <div>
+                        <p class="text-xs text-slate-400 font-bold uppercase tracking-wider">Avisos WFM (Atención Inmediata)</p>
+                        <h3 id="wfmAvisos" class="text-3xl font-black text-sky-600 mt-1">0</h3>
+                    </div>
+                    <div class="bg-sky-50 p-4 rounded-2xl text-sky-500 text-2xl">📋</div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between border-l-4 border-indigo-500">
+                    <div>
+                        <p class="text-xs text-slate-400 font-bold uppercase tracking-wider">Circuitos Afectados</p>
+                        <h3 id="wfmCircuitos" class="text-3xl font-black text-slate-800 mt-1">0</h3>
+                    </div>
+                    <div class="bg-indigo-50 p-4 rounded-2xl text-indigo-500 text-2xl">🔌</div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between border-l-4 border-amber-500">
+                    <div>
+                        <p class="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Clientes Afectados</p>
+                        <h3 id="wfmAfectados" class="text-3xl font-black text-amber-600 mt-1">0</h3>
+                    </div>
+                    <div class="bg-amber-50 p-4 rounded-2xl text-amber-500 text-2xl">👥</div>
+                </div>
+            </div>
+
+            <!-- Gráficas WFM -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Distribución por Sector Operativo (Centro vs Norte)</h3>
+                    <div class="relative h-60"><canvas id="wfmSectorChart"></canvas></div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Estado de Alerta por Tiempo Transcurrido</h3>
+                    <div class="relative h-60"><canvas id="wfmAlertChart"></canvas></div>
+                </div>
+            </div>
+
+            <!-- Tablas de Control Operativo WFM -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 border-b pb-2">Incidentes por Circuito</h3>
+                        <div class="overflow-x-auto max-h-[420px]">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-slate-50 text-slate-500 sticky top-0"><tr><th class="p-2.5">Circuito</th><th class="p-2.5 text-right">Cantidad</th></tr></thead>
+                                <tbody id="wfmCircuitsBody" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-3 border-t font-bold text-xs flex justify-between text-slate-700"><span>Total Circuitos</span><span id="wfmCircuitsTotal">0</span></div>
+                </div>
+
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 border-b pb-2">Control Avisos (Afectados)</h3>
+                        <div class="overflow-x-auto max-h-[420px]">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-slate-50 text-slate-500 sticky top-0"><tr><th class="p-2.5">ID Incidente</th><th class="p-2.5">Cuadrilla</th><th class="p-2.5 text-right">Afectados</th></tr></thead>
+                                <tbody id="wfmAvisosBody" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-3 border-t font-bold text-xs flex justify-between text-slate-700"><span>Total Afectados</span><span id="wfmAvisosTotal">0</span></div>
+                </div>
+
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
+                    <div>
+                        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 border-b pb-2">Tiempo Transcurrido WFM</h3>
+                        <div class="overflow-x-auto max-h-[420px]">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-slate-50 text-slate-500 sticky top-0"><tr><th class="p-2.5">ID Incidente</th><th class="p-2.5 text-right">Tiempo (HH:MM:SS)</th></tr></thead>
+                                <tbody id="wfmHoursBody" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="mt-4 pt-3 border-t font-bold text-xs flex justify-between text-slate-700"><span>Estado WFM</span><span class="text-sky-600 font-bold">Activo</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== PESTAÑA 2: CONTROL KPI 3 (EXCLUYE DP Y ASIG) ==================== -->
+        <div id="sectionKpi" class="space-y-6 hidden">
+            <!-- Barra de Filtros KPI 3 -->
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Sector Operativo:</label>
+                    <select id="kpiSectorFilter" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm bg-slate-50 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        <option value="ALL">Todos los Sectores</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Subestación:</label>
+                    <select id="kpiSubFilter" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm bg-slate-50 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        <option value="ALL">Todas las Subestaciones</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Circuito:</label>
+                    <select id="kpiCircuitFilter" class="w-full p-2.5 border border-slate-300 rounded-xl text-sm bg-slate-50 font-medium focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        <option value="ALL">Todos los Circuitos</option>
+                    </select>
+                </div>
+                <div class="flex items-end pt-1 md:pt-5">
+                    <button id="kpiResetFilters" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2.5 px-4 rounded-xl text-sm transition flex justify-center items-center space-x-2">
+                        <span>🔄 Limpiar Filtros</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tarjetas de Métricas KPI 3 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-sky-500 flex justify-between items-center">
+                    <div><p class="text-xs text-slate-400 font-bold uppercase">Total Registros Evaluados</p><h3 id="kpiTotal" class="text-2xl font-black text-slate-800 mt-1">0</h3></div>
+                    <div class="text-2xl">📋</div>
+                </div>
+                <div class="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-green-500 flex justify-between items-center">
+                    <div><p class="text-xs text-slate-400 font-bold uppercase">Cumplen Meta KPI 3</p><h3 id="kpiCumplen" class="text-2xl font-black text-green-600 mt-1">0</h3></div>
+                    <div class="text-2xl">🟢</div>
+                </div>
+                <div class="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-red-500 flex justify-between items-center">
+                    <div><p class="text-xs text-slate-400 font-bold uppercase">Incumplen Meta KPI 3</p><h3 id="kpiIncumplen" class="text-2xl font-black text-red-600 mt-1">0</h3></div>
+                    <div class="text-2xl">🔴</div>
+                </div>
+            </div>
+
+            <!-- Gráficas KPI 3 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Nivel de Cumplimiento KPI 3</h3>
+                    <div class="relative h-60"><canvas id="kpiComplianceChart"></canvas></div>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                    <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">Registros por Sector (Centro vs Norte)</h3>
+                    <div class="relative h-60"><canvas id="kpiSectorChart"></canvas></div>
+                </div>
+            </div>
+
+            <!-- Tabla Detallada KPI 3 -->
+            <div class="bg-white rounded-2xl shadow-sm overflow-hidden border border-slate-200">
+                <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                    <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider">Matriz de Evaluación KPI 3 (Rangos de Clientes vs Meta Horas)</h3>
+                    <span id="kpiRecordCount" class="text-xs font-bold text-slate-500">Mostrando 0 registros</span>
+                </div>
+                <div class="overflow-x-auto max-h-[500px]">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead class="bg-slate-100 text-slate-600 sticky top-0">
+                            <tr>
+                                <th class="p-3">INC</th>
+                                <th class="p-3">Sector</th>
+                                <th class="p-3">Subestación</th>
+                                <th class="p-3">Circuito</th>
+                                <th class="p-3">Ubicación / Dirección</th>
+                                <th class="p-3 text-center">Afectados</th>
+                                <th class="p-3 text-center">Rango Clientes</th>
+                                <th class="p-3 text-center">Fecha Creación</th>
+                                <th class="p-3 text-center">Fecha Cargue</th>
+                                <th class="p-3 text-center">Tiempo Transcurrido</th>
+                                <th class="p-3 text-center">Meta Atención</th>
+                                <th class="p-3 text-center">Cumplimiento</th>
+                                <th class="p-3">Cuadrillas</th>
+                            </tr>
+                        </thead>
+                        <tbody id="kpiTableBody" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pantalla Inicial de Bienvenida -->
+        <div id="welcomeMessage" class="bg-white rounded-2xl shadow-sm p-12 md:p-16 text-center border border-slate-200 mt-6">
+            <div class="text-6xl mb-4">📂</div>
+            <h2 class="text-xl font-bold text-slate-800 mb-2">Carga tu reporte diario de WFM en Excel / CSV</h2>
+            <p class="text-slate-500 max-w-lg mx-auto text-sm leading-relaxed">
+                El sistema procesará automáticamente la Pestaña 1 (Atención Inmediata / Instrucción en Blanco) y evaluará las metas del KPI 3 en la Pestaña 2 (excluyendo incidentes de Daños Pendientes y Asignados).
+            </p>
+        </div>
+    </div>
+
+    <!-- Lógica JavaScript Principal -->
+    <script>
+        const CIRCUITS_SECTOR_MAP = {
+            "LIBANO 1": "NORTE", "LIBANO 2": "NORTE", "LIBANO 3": "NORTE", "LIBANO 4": "NORTE", "LIBANO 5": "NORTE",
+            "CAJAMARCA 1": "CENTRO", "CAJAMARCA 2": "CENTRO", "CAJAMARCA 2 CT 1": "CENTRO", "CAJAMARCA 2 CT 2": "CENTRO", "CAJAMARCA 2 CT 3": "CENTRO",
+            "VENADILLO 1": "NORTE", "VENADILLO 2": "NORTE", "LERIDA 1": "NORTE", "LERIDA 2": "NORTE", "LERIDA 3": "NORTE", "LERIDA 4": "NORTE", "LERIDA 5": "NORTE",
+            "MARIQUITA 1": "NORTE", "MARIQUITA 2": "NORTE", "MARIQUITA 3": "NORTE", "MARIQUITA 4": "NORTE",
+            "FRESNO 1": "NORTE", "FRESNO 2": "NORTE", "FRESNO 3": "NORTE", "FRESNO 4": "NORTE",
+            "HONDA 2": "NORTE", "HONDA 3": "NORTE", "GUAYABAL 1": "NORTE", "GUAYABAL 2": "NORTE", "GUAYABAL 3": "NORTE",
+            "PALOCABILDO 1": "NORTE", "PALOCABILDO 2": "NORTE", "PALOCABILDO 3": "NORTE",
+            "HERVEO 1": "NORTE", "HERVEO 2": "NORTE", "JUNIN": "NORTE", "ANZOATEGUI": "NORTE", "SANTA ISABEL": "NORTE",
+            "EL TABLAZO": "NORTE", "PADUA": "NORTE", "ARRIEROS": "NORTE", "ARRIEROS CTO 1": "NORTE", "ARRIEROS CTO 2": "NORTE", "ARRIEROS CTO 3": "NORTE",
+            "PAYANDE 1": "CENTRO", "PAYANDE 2": "CENTRO", "PIEDRAS": "CENTRO", "ALVARADO": "CENTRO",
+            "PAPAYO": "CENTRO", "SAN JORGE": "CENTRO", "VERGEL": "CENTRO", "BRISAS": "CENTRO", "MIROLINDO": "CENTRO",
+            "SAN JUAN": "CENTRO", "PASTALES": "CENTRO", "LA VEGA": "CENTRO", "CHAPETON": "CENTRO", "ROVIRA": "CENTRO",
+            "AMBALEMA": "NORTE", "LA MIEL": "CENTRO", "SIMON BOLIVAR": "CENTRO", "PICALEÑA": "CENTRO", "URBANO": "CENTRO", "RURAL": "CENTRO"
+        };
+
+        function getSectorByCircuit(circuitName) {
+            if (!circuitName) return "CENTRO";
+            let upper = circuitName.toUpperCase();
+            for (let [key, sector] of Object.entries(CIRCUITS_SECTOR_MAP)) {
+                if (upper.includes(key)) return sector;
+            }
+            return "CENTRO";
+        }
+
+        let globalWfmData = [];
+        let globalKpiData = [];
+        let globalReportDate = new Date();
+        let globalReportDateStr = "";
+
+        let wfmSectorChartInstance = null;
+        let wfmAlertChartInstance = null;
+        let kpiSectorChartInstance = null;
+        let kpiComplianceChartInstance = null;
+
+        function extractReportDate(rows) {
+            for (let i = 0; i < Math.min(5, rows.length); i++) {
+                let rowText = rows[i].join(' ');
+                let match = rowText.match(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+                if (match) {
+                    let d = parseInt(match[1], 10), m = parseInt(match[2], 10) - 1, y = parseInt(match[3], 10);
+                    let hr = parseInt(match[4], 10), min = parseInt(match[5], 10), s = parseInt(match[6], 10);
+                    globalReportDateStr = `${String(d).padStart(2,'0')}/${String(m+1).padStart(2,'0')}/${y} ${String(hr).padStart(2,'0')}:${String(min).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+                    return new Date(y, m, d, hr, min, s);
+                }
+            }
+            let now = new Date();
+            globalReportDateStr = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+            return now;
+        }
+
+        function parseDateTime(fechaVal, horaVal, refDate) {
+            let year, month, day, hours = 0, minutes = 0, seconds = 0;
+
+            if (fechaVal instanceof Date) {
+                year = fechaVal.getUTCFullYear();
+                month = fechaVal.getUTCMonth();
+                day = fechaVal.getUTCDate();
+                hours = fechaVal.getUTCHours();
+                minutes = fechaVal.getUTCMinutes();
+                seconds = fechaVal.getUTCSeconds();
+            } else if (typeof fechaVal === 'number') {
+                let baseDate = new Date((fechaVal - (25567 + 2)) * 86400 * 1000);
+                year = baseDate.getUTCFullYear();
+                month = baseDate.getUTCMonth();
+                day = baseDate.getUTCDate();
+                hours = baseDate.getUTCHours();
+                minutes = baseDate.getUTCMinutes();
+                seconds = baseDate.getUTCSeconds();
+            } else if (fechaVal) {
+                let str = String(fechaVal).trim();
+                let datePart = str.split(' ')[0];
+                let timePart = str.split(' ')[1];
+                let parts = datePart.split(/[\/\-]/);
+                if (parts.length === 3) {
+                    day = parseInt(parts[0], 10);
+                    month = parseInt(parts[1], 10) - 1;
+                    year = parseInt(parts[2], 10);
+                    if (timePart) {
+                        let tParts = timePart.split(':');
+                        hours = parseInt(tParts[0] || 0, 10);
+                        minutes = parseInt(tParts[1] || 0, 10);
+                        seconds = parseInt(parseFloat(tParts[2] || 0), 10);
+                    }
+                }
+            }
+
+            if (year === undefined || isNaN(year)) {
+                return { dateObj: refDate, str: "N/A" };
+            }
+
+            let baseDate = new Date(year, month, day, hours, minutes, seconds);
+
+            if (horaVal !== undefined && horaVal !== null && String(horaVal).trim() !== '') {
+                if (typeof horaVal === 'number') {
+                    let totalSecs = Math.round(horaVal * 86400);
+                    baseDate.setHours(Math.floor(totalSecs / 3600), Math.floor((totalSecs % 3600) / 60), totalSecs % 60, 0);
+                } else {
+                    let hParts = String(horaVal).trim().split(':');
+                    if (hParts.length >= 2) {
+                        baseDate.setHours(parseInt(hParts[0] || 0, 10), parseInt(hParts[1] || 0, 10), parseInt(parseFloat(hParts[2] || 0), 10), 0);
+                    }
+                }
+            }
+
+            let dStr = `${String(baseDate.getDate()).padStart(2,'0')}/${String(baseDate.getMonth()+1).padStart(2,'0')}/${baseDate.getFullYear()} ${String(baseDate.getHours()).padStart(2,'0')}:${String(baseDate.getMinutes()).padStart(2,'0')}:${String(baseDate.getSeconds()).padStart(2,'0')}`;
+            return { dateObj: baseDate, str: dStr };
+        }
+
+        function formatTimeDiff(diffMs) {
+            if (diffMs <= 0) return { text: "00:00:00", hoursNum: 0, days: 0 };
+            let totalSecs = Math.floor(diffMs / 1000);
+            let days = Math.floor(totalSecs / 86400);
+            let hrs = Math.floor((totalSecs % 86400) / 3600);
+            let mins = Math.floor((totalSecs % 3600) / 60);
+            let secs = totalSecs % 60;
+            
+            let totalHours = diffMs / (1000 * 3600);
+            let formattedHrs = String(hrs).padStart(2, '0');
+            let formattedMins = String(mins).padStart(2, '0');
+            let formattedSecs = String(secs).padStart(2, '0');
+            
+            let text = days > 0 ? `${days}d ${formattedHrs}:${formattedMins}:${formattedSecs}` : `${formattedHrs}:${formattedMins}:${formattedSecs}`;
+            return { text, hoursNum: totalHours, days };
+        }
+
+        function evaluateKpi3(afectados, horasTranscurridas) {
+            let rangoStr = "1 - 20";
+            let metaHoras = 20;
+
+            if (afectados >= 1 && afectados <= 20) { rangoStr = "1 - 20"; metaHoras = 20; }
+            else if (afectados >= 21 && afectados <= 100) { rangoStr = "21 - 100"; metaHoras = 9; }
+            else if (afectados >= 101 && afectados <= 500) { rangoStr = "101 - 500"; metaHoras = 6; }
+            else if (afectados >= 501 && afectados <= 5000) { rangoStr = "501 - 5000"; metaHoras = 3; }
+            else if (afectados > 5000) { rangoStr = "> 5000"; metaHoras = 1; }
+
+            let cumple = horasTranscurridas <= metaHoras;
+            return { rangoStr, metaHoras, cumple };
+        }
+
+        function switchTab(tab) {
+            if (tab === 'wfm') {
+                document.getElementById('sectionWfm').classList.remove('hidden');
+                document.getElementById('sectionKpi').classList.add('hidden');
+                document.getElementById('tabWfm').className = "px-5 py-2.5 rounded-xl font-bold text-sm bg-sky-600 text-white shadow transition flex items-center space-x-2 shrink-0";
+                document.getElementById('tabKpi').className = "px-5 py-2.5 rounded-xl font-bold text-sm bg-white text-slate-600 border border-slate-300 shadow-sm transition flex items-center space-x-2 shrink-0";
+            } else {
+                document.getElementById('sectionKpi').classList.remove('hidden');
+                document.getElementById('sectionWfm').classList.add('hidden');
+                document.getElementById('tabKpi').className = "px-5 py-2.5 rounded-xl font-bold text-sm bg-sky-600 text-white shadow transition flex items-center space-x-2 shrink-0";
+                document.getElementById('tabWfm').className = "px-5 py-2.5 rounded-xl font-bold text-sm bg-white text-slate-600 border border-slate-300 shadow-sm transition flex items-center space-x-2 shrink-0";
+            }
+        }
+
+        document.getElementById('fileUpload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array', cellDates: true});
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const rows = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+
+                processCompleteData(rows);
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        function processCompleteData(rows) {
+            if (rows.length === 0) return;
+
+            globalReportDate = extractReportDate(rows);
+
+            let headerIdx = -1;
+            for (let i = 0; i < Math.min(10, rows.length); i++) {
+                let rowStr = rows[i].map(c => String(c).toLowerCase());
+                if (rowStr.some(c => c.includes('identificaci') || c.includes('instrucci'))) {
+                    headerIdx = i;
+                    break;
+                }
+            }
+
+            if (headerIdx === -1) {
+                alert('No se encontró la cabecera correcta de WFM.');
+                return;
+            }
+
+            let headers = rows[headerIdx].map(h => String(h).trim());
+            let dataRows = rows.slice(headerIdx + 1);
+
+            let idxInst = headers.findIndex(h => h.toLowerCase().includes('instrucci'));
+            let idxId = headers.findIndex(h => h.toLowerCase().includes('identificaci'));
+            let idxFecha = headers.findIndex(h => h.toLowerCase().includes('fecha de creaci'));
+            let idxHora = headers.findIndex(h => h.toLowerCase().includes('hora creacion'));
+            let idxSub = headers.findIndex(h => h.toLowerCase().includes('subestaci'));
+            let idxCircuito = headers.findIndex(h => h.toLowerCase().includes('circuito normal') || h.toLowerCase().includes('circuito actual'));
+            let idxDir = headers.findIndex(h => h.toLowerCase().includes('direcci'));
+            let idxCuadrilla = headers.findIndex(h => h.toLowerCase().includes('cuadrillas'));
+            let idxAfectados = headers.findIndex(h => h.toLowerCase().includes('afectados') && !h.toLowerCase().includes('crític'));
+
+            globalWfmData = [];
+            globalKpiData = [];
+
+            dataRows.forEach(row => {
+                let id = idxId !== -1 ? row[idxId] : '';
+                if (!id) return;
+
+                let inst = idxInst !== -1 ? String(row[idxInst] || '').trim().toUpperCase() : '';
+                let fechaRaw = idxFecha !== -1 ? row[idxFecha] : null;
+                let horaRaw = idxHora !== -1 ? row[idxHora] : null;
+                let subestacion = idxSub !== -1 ? String(row[idxSub] || 'SIN SUBESTACION').trim() : 'SIN SUBESTACION';
+                let circuito = idxCircuito !== -1 ? String(row[idxCircuito] || 'SIN CIRCUITO').trim() : 'SIN CIRCUITO';
+                let direccion = idxDir !== -1 ? String(row[idxDir] || '').trim() : '';
+                let cuadrilla = idxCuadrilla !== -1 ? String(row[idxCuadrilla] || '').trim() : '';
+                let afectados = idxAfectados !== -1 ? parseInt(row[idxAfectados]) || 0 : 0;
+
+                let sectorGeo = getSectorByCircuit(circuito);
+                let fechaIncRes = parseDateTime(fechaRaw, horaRaw, globalReportDate);
+
+                let isBlank = inst === '' || inst === 'NAN' || inst === 'UNDEFINED';
+                let isDpOrAsig = inst.includes('DP') || inst.includes('ASIG');
+
+                if (isBlank) {
+                    let diffMs = fechaIncRes.dateObj ? (globalReportDate - fechaIncRes.dateObj) : 0;
+                    let timeRes = formatTimeDiff(diffMs);
+                    globalWfmData.push({ id, sectorGeo, subestacion, circuito, direccion, cuadrilla, afectados, horasStr: timeRes.text, horasNum: timeRes.hoursNum });
+                }
+
+                if (!isDpOrAsig) {
+                    let diffMs = fechaIncRes.dateObj ? (globalReportDate - fechaIncRes.dateObj) : 0;
+                    let timeRes = formatTimeDiff(diffMs);
+                    let kpiEval = evaluateKpi3(afectados, timeRes.hoursNum);
+
+                    globalKpiData.push({
+                        id, sectorGeo, subestacion, circuito, direccion, afectados,
+                        fechaCreacionStr: fechaIncRes.str,
+                        fechaCargueStr: globalReportDateStr,
+                        tiempoStr: timeRes.text, horasNum: timeRes.hoursNum,
+                        rangoStr: kpiEval.rangoStr, metaHoras: kpiEval.metaHoras, cumpleKpi3: kpiEval.cumple, cuadrilla
+                    });
+                }
+            });
+
+            populateWfmFilters();
+            updateWfmDashboard(globalWfmData);
+            populateKpiFilters();
+            updateKpiDashboard(globalKpiData);
+
+            document.getElementById('welcomeMessage').classList.add('hidden');
+        }
+
+        function populateWfmFilters() {
+            let sectors = [...new Set(globalWfmData.map(d => d.sectorGeo))].sort();
+            let subs = [...new Set(globalWfmData.map(d => d.subestacion))].sort();
+            let circs = [...new Set(globalWfmData.map(d => d.circuito))].sort();
+
+            let secSel = document.getElementById('wfmSectorFilter');
+            secSel.innerHTML = '<option value="ALL">Todos los Sectores</option>';
+            sectors.forEach(s => secSel.innerHTML += `<option value="${s}">${s}</option>`);
+
+            let subSel = document.getElementById('wfmSubFilter');
+            subSel.innerHTML = '<option value="ALL">Todas las Subestaciones</option>';
+            subs.forEach(s => subSel.innerHTML += `<option value="${s}">${s}</option>`);
+
+            let circSel = document.getElementById('wfmCircuitFilter');
+            circSel.innerHTML = '<option value="ALL">Todos los Circuitos</option>';
+            circs.forEach(c => circSel.innerHTML += `<option value="${c}">${c}</option>`);
+        }
+
+        function filterWfmData() {
+            let sec = document.getElementById('wfmSectorFilter').value;
+            let sub = document.getElementById('wfmSubFilter').value;
+            let circ = document.getElementById('wfmCircuitFilter').value;
+
+            let filtered = globalWfmData.filter(d => {
+                let matchSec = (sec === 'ALL' || d.sectorGeo === sec);
+                let matchSub = (sub === 'ALL' || d.subestacion === sub);
+                let matchCirc = (circ === 'ALL' || d.circuito === circ);
+                return matchSec && matchSub && matchCirc;
+            });
+            updateWfmDashboard(filtered);
+        }
+
+        document.getElementById('wfmSectorFilter').addEventListener('change', filterWfmData);
+        document.getElementById('wfmSubFilter').addEventListener('change', filterWfmData);
+        document.getElementById('wfmCircuitFilter').addEventListener('change', filterWfmData);
+        document.getElementById('wfmResetFilters').addEventListener('click', function() {
+            document.getElementById('wfmSectorFilter').value = 'ALL';
+            document.getElementById('wfmSubFilter').value = 'ALL';
+            document.getElementById('wfmCircuitFilter').value = 'ALL';
+            updateWfmDashboard(globalWfmData);
+        });
+
+        function updateWfmDashboard(records) {
+            document.getElementById('wfmAvisos').innerText = records.length;
+            document.getElementById('wfmCircuitos').innerText = [...new Set(records.map(r => r.circuito))].length;
+            let totalAfectados = records.reduce((s, r) => s + r.afectados, 0);
+            document.getElementById('wfmAfectados').innerText = totalAfectados.toLocaleString();
+
+            let circCounts = {};
+            records.forEach(r => circCounts[r.circuito] = (circCounts[r.circuito] || 0) + 1);
+            let sortedCircuits = Object.entries(circCounts).sort((a, b) => b[1] - a[1]);
+            let circHtml = '';
+            sortedCircuits.forEach(([c, cnt]) => {
+                circHtml += `<tr><td class="p-2.5 font-medium text-slate-700">${c}</td><td class="p-2.5 text-right font-bold text-sky-600">${cnt}</td></tr>`;
+            });
+            document.getElementById('wfmCircuitsBody').innerHTML = circHtml;
+            document.getElementById('wfmCircuitsTotal').innerText = records.length;
+
+            let sortedAvisos = [...records].sort((a, b) => b.afectados - a.afectados);
+            let avisosHtml = '';
+            sortedAvisos.forEach(r => {
+                avisosHtml += `<tr><td class="p-2.5 font-medium text-slate-700">${r.id}</td><td class="p-2.5 text-slate-500 truncate max-w-[90px]">${r.cuadrilla}</td><td class="p-2.5 text-right font-bold text-amber-600">${r.afectados}</td></tr>`;
+            });
+            document.getElementById('wfmAvisosBody').innerHTML = avisosHtml;
+            document.getElementById('wfmAvisosTotal').innerText = totalAfectados.toLocaleString();
+
+            let sortedHours = [...records].sort((a, b) => b.horasNum - a.horasNum);
+            let hoursHtml = '';
+            sortedHours.forEach(r => {
+                let badge = r.horasNum > 24 ? 'text-red-600 bg-red-50 font-bold' : (r.horasNum > 12 ? 'text-amber-600 bg-amber-50 font-bold' : 'text-slate-700 bg-slate-50');
+                hoursHtml += `<tr><td class="p-2.5 font-medium text-slate-700">${r.id}</td><td class="p-2.5 text-right ${badge} px-2 py-1 rounded font-mono">${r.horasStr}</td></tr>`;
+            });
+            document.getElementById('wfmHoursBody').innerHTML = hoursHtml;
+
+            renderWfmCharts(records);
+        }
+
+        function renderWfmCharts(records) {
+            let centro = records.filter(d => d.sectorGeo === 'CENTRO').length;
+            let norte = records.filter(d => d.sectorGeo === 'NORTE').length;
+
+            if (wfmSectorChartInstance) wfmSectorChartInstance.destroy();
+            let ctxSec = document.getElementById('wfmSectorChart').getContext('2d');
+            wfmSectorChartInstance = new Chart(ctxSec, {
+                type: 'bar',
+                data: {
+                    labels: ['CENTRO', 'NORTE'],
+                    datasets: [{ label: 'Avisos WFM', data: [centro, norte], backgroundColor: ['#0284c7', '#10b981'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            let critico = records.filter(d => d.horasNum > 24).length;
+            let alerta = records.filter(d => d.horasNum > 12 && d.horasNum <= 24).length;
+            let normal = records.filter(d => d.horasNum <= 12).length;
+
+            if (wfmAlertChartInstance) wfmAlertChartInstance.destroy();
+            let ctxAlrt = document.getElementById('wfmAlertChart').getContext('2d');
+            wfmAlertChartInstance = new Chart(ctxAlrt, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Crítico (> 24h) 🔴', 'Alerta (12h - 24h) 🟡', 'En Tiempo (< 12h) 🟢'],
+                    datasets: [{ data: [critico, alerta, normal], backgroundColor: ['#dc2626', '#f59e0b', '#16a34a'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        function populateKpiFilters() {
+            let sectors = [...new Set(globalKpiData.map(d => d.sectorGeo))].sort();
+            let subs = [...new Set(globalKpiData.map(d => d.subestacion))].sort();
+            let circs = [...new Set(globalKpiData.map(d => d.circuito))].sort();
+
+            let secSel = document.getElementById('kpiSectorFilter');
+            secSel.innerHTML = '<option value="ALL">Todos los Sectores</option>';
+            sectors.forEach(s => secSel.innerHTML += `<option value="${s}">${s}</option>`);
+
+            let subSel = document.getElementById('kpiSubFilter');
+            subSel.innerHTML = '<option value="ALL">Todas las Subestaciones</option>';
+            subs.forEach(s => subSel.innerHTML += `<option value="${s}">${s}</option>`);
+
+            let circSel = document.getElementById('kpiCircuitFilter');
+            circSel.innerHTML = '<option value="ALL">Todos los Circuitos</option>';
+            circs.forEach(c => circSel.innerHTML += `<option value="${c}">${c}</option>`);
+        }
+
+        function filterKpiData() {
+            let sec = document.getElementById('kpiSectorFilter').value;
+            let sub = document.getElementById('kpiSubFilter').value;
+            let circ = document.getElementById('kpiCircuitFilter').value;
+
+            let filtered = globalKpiData.filter(d => {
+                let matchSec = (sec === 'ALL' || d.sectorGeo === sec);
+                let matchSub = (sub === 'ALL' || d.subestacion === sub);
+                let matchCirc = (circ === 'ALL' || d.circuito === circ);
+                return matchSec && matchSub && matchCirc;
+            });
+            updateKpiDashboard(filtered);
+        }
+
+        document.getElementById('kpiSectorFilter').addEventListener('change', filterKpiData);
+        document.getElementById('kpiSubFilter').addEventListener('change', filterKpiData);
+        document.getElementById('kpiCircuitFilter').addEventListener('change', filterKpiData);
+        document.getElementById('kpiResetFilters').addEventListener('click', function() {
+            document.getElementById('kpiSectorFilter').value = 'ALL';
+            document.getElementById('kpiSubFilter').value = 'ALL';
+            document.getElementById('kpiCircuitFilter').value = 'ALL';
+            updateKpiDashboard(globalKpiData);
+        });
+
+        function updateKpiDashboard(data) {
+            let total = data.length;
+            let cumplen = data.filter(d => d.cumpleKpi3).length;
+            let incumplen = data.filter(d => !d.cumpleKpi3).length;
+
+            document.getElementById('kpiTotal').innerText = total;
+            document.getElementById('kpiCumplen').innerText = cumplen;
+            document.getElementById('kpiIncumplen').innerText = incumplen;
+            document.getElementById('kpiRecordCount').innerText = `Mostrando ${total} registros`;
+
+            renderKpiCharts(cumplen, incumplen, data);
+            renderKpiTable(data);
+        }
+
+        function renderKpiCharts(cumplen, incumplen, data) {
+            if (kpiComplianceChartInstance) kpiComplianceChartInstance.destroy();
+            let ctxKpi = document.getElementById('kpiComplianceChart').getContext('2d');
+            kpiComplianceChartInstance = new Chart(ctxKpi, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Cumple KPI 3 🟢', 'Incumple KPI 3 🔴'],
+                    datasets: [{ data: [cumplen, incumplen], backgroundColor: ['#16a34a', '#dc2626'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+
+            let centro = data.filter(d => d.sectorGeo === 'CENTRO').length;
+            let norte = data.filter(d => d.sectorGeo === 'NORTE').length;
+
+            if (kpiSectorChartInstance) kpiSectorChartInstance.destroy();
+            let ctxSec = document.getElementById('kpiSectorChart').getContext('2d');
+            kpiSectorChartInstance = new Chart(ctxSec, {
+                type: 'bar',
+                data: {
+                    labels: ['CENTRO', 'NORTE'],
+                    datasets: [{ label: 'Cantidad Registros', data: [centro, norte], backgroundColor: ['#0284c7', '#10b981'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: false }
+            });
+        }
+
+        function renderKpiTable(data) {
+            let tbody = document.getElementById('kpiTableBody');
+            tbody.innerHTML = '';
+            data.forEach(d => {
+                let kpiBadge = d.cumpleKpi3 ? 'bg-green-100 text-green-700 font-bold border border-green-300' : 'bg-red-100 text-red-700 font-bold border border-red-300';
+                let kpiText = d.cumpleKpi3 ? 'Cumple' : 'Incumple';
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="p-3 font-bold text-slate-800">${d.id}</td>
+                        <td class="p-3 font-extrabold text-sky-700">${d.sectorGeo}</td>
+                        <td class="p-3 font-semibold text-slate-600">${d.subestacion}</td>
+                        <td class="p-3 text-slate-600">${d.circuito}</td>
+                        <td class="p-3 text-slate-500">${d.direccion}</td>
+                        <td class="p-3 text-center font-bold text-amber-600">${d.afectados}</td>
+                        <td class="p-3 text-center font-semibold text-slate-700">${d.rangoStr}</td>
+                        <td class="p-3 text-center font-mono text-slate-600 text-xs">${d.fechaCreacionStr}</td>
+                        <td class="p-3 text-center font-mono text-slate-600 text-xs">${d.fechaCargueStr}</td>
+                        <td class="p-3 text-center font-mono font-bold text-slate-800">${d.tiempoStr}</td>
+                        <td class="p-3 text-center text-slate-600 font-semibold">≤ ${d.metaHoras} h</td>
+                        <td class="p-3 text-center"><span class="px-3 py-1 rounded-full text-xs ${kpiBadge}">${kpiText}</span></td>
+                        <td class="p-3 text-slate-500">${d.cuadrilla}</td>
+                    </tr>
+                `;
+            });
+        }
+    </script>
+</body>
+</html>
