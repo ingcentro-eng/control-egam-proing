@@ -100,15 +100,21 @@ st.markdown('''
 </div>
 ''', unsafe_allow_html=True)
 
-# URL RAW de GitHub (Reemplaza con tu URL si usas carga automática)
-URL_RAW_GITHUB = "https://raw.githubusercontent.com/TU_USUARIO/TU_REPOSITORIO/main/Navegador%20de%20incidentes.xlsx"
+# CONFIGURACIÓN DE URL RAW DE GITHUB
+# Reemplaza esta URL por la dirección Raw oficial de tu archivo en GitHub:
+DEFAULT_RAW_URL = "https://raw.githubusercontent.com/TU_USUARIO/TU_REPOSITORIO/main/Navegador%20de%20incidentes.xlsx"
 
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/electricity.png", width=55)
     st.title("Centro de Control EGAM")
     st.markdown("---")
     
-    archivo_subido = st.file_uploader("📂 Cargar Reporte WFM (.xlsx)", type=["xlsx", "xls"])
+    st.markdown("### 1. Carga Manual")
+    archivo_subido = st.file_uploader("📂 Cargar Reporte WFM (.xlsx, .csv)", type=["xlsx", "xls", "csv"])
+    
+    st.markdown("---")
+    st.markdown("### 2. Carga Automática (GitHub)")
+    url_github = st.text_input("🔗 URL Raw del Excel en GitHub:", value=DEFAULT_RAW_URL)
     
     st.markdown("---")
     excluir_dp_asig = st.toggle("🚫 Excluir DP / DP BT / ASIG (Solo WFM Atención Inmediata)", value=True)
@@ -117,26 +123,41 @@ with st.sidebar:
 
 @st.cache_data(ttl=60)
 def cargar_desde_github_raw(url):
+    if not url or "TU_USUARIO" in url:
+        return None
     try:
         url_dinamica = f"{url}?t={int(time.time())}"
-        res = requests.get(url_dinamica, timeout=5)
+        res = requests.get(url_dinamica, timeout=8)
         if res.status_code == 200:
             return io.BytesIO(res.content)
-    except:
+    except Exception:
         pass
     return None
 
+# Determinar origen del archivo
 archivo_a_usar = None
+origen_datos = ""
+
 if archivo_subido is not None:
     archivo_a_usar = archivo_subido
-elif os.path.exists("Navegador de incidentes_01_10_2026 06_15_57.320.xlsx"):
-    archivo_a_usar = "Navegador de incidentes_01_10_2026 06_15_57.320.xlsx"
+    origen_datos = "📂 Carga Manual (Archivo Local)"
 else:
-    archivo_a_usar = cargar_desde_github_raw(URL_RAW_GITHUB)
+    bytes_github = cargar_desde_github_raw(url_github)
+    if bytes_github is not None:
+        archivo_a_usar = bytes_github
+        origen_datos = "🔄 Sincronización Automática (GitHub)"
+    else:
+        # Intento de lectura de archivos locales en la raíz
+        archivos_locales = [f for f in os.listdir('.') if f.endswith(('.xlsx', '.csv')) and not f.startswith('.')]
+        if archivos_locales:
+            archivo_a_usar = archivos_locales[0]
+            origen_datos = f"📄 Archivo Local en Servidor ({archivos_locales[0]})"
 
 if archivo_a_usar is None:
-    st.info("👋 Por favor, carga el reporte diario exportado de WFM en la barra lateral.")
+    st.info("👋 Por favor, carga el reporte diario exportado de WFM en la barra lateral o verifica la URL Raw de GitHub.")
     st.stop()
+
+st.sidebar.success(f"Origen de Datos: **{origen_datos}**")
 
 # ---------------------------------------------------------
 # 3. PROCESAMIENTO Y TRANSFORMACIÓN
@@ -144,21 +165,43 @@ if archivo_a_usar is None:
 try:
     if hasattr(archivo_a_usar, 'seek'):
         archivo_a_usar.seek(0)
-        
-    df_temp = pd.read_excel(archivo_a_usar, header=None, nrows=15)
-    header_idx = 5
-    for i in range(len(df_temp)):
-        fila = [str(c).lower() for c in df_temp.iloc[i].tolist()]
-        if any('identificaci' in c for c in fila) and any('instrucci' in c for c in fila):
-            header_idx = i
-            break
 
-    if hasattr(archivo_a_usar, 'seek'):
-        archivo_a_usar.seek(0)
+    # Detectar si es CSV o Excel
+    es_csv = False
+    if isinstance(archivo_a_usar, str) and archivo_a_usar.endswith('.csv'):
+        es_csv = True
+    elif hasattr(archivo_a_usar, 'name') and archivo_a_usar.name.endswith('.csv'):
+        es_csv = True
 
-    df = pd.read_excel(archivo_a_usar, header=header_idx)
+    if es_csv:
+        df_temp = pd.read_csv(archivo_a_usar, nrows=15)
+        header_idx = 0
+        for i in range(len(df_temp)):
+            fila = [str(c).lower() for c in df_temp.iloc[i].tolist()]
+            if any('identificaci' in c for c in fila) and any('instrucci' in c for c in fila):
+                header_idx = i + 1
+                break
+        if hasattr(archivo_a_usar, 'seek'):
+            archivo_a_usar.seek(0)
+        df = pd.read_csv(archivo_a_usar, header=header_idx)
+    else:
+        df_temp = pd.read_excel(archivo_a_usar, header=None, nrows=15)
+        header_idx = 5
+        for i in range(len(df_temp)):
+            fila = [str(c).lower() for c in df_temp.iloc[i].tolist()]
+            if any('identificaci' in c for c in fila) and any('instrucci' in c for c in fila):
+                header_idx = i
+                break
+        if hasattr(archivo_a_usar, 'seek'):
+            archivo_a_usar.seek(0)
+        df = pd.read_excel(archivo_a_usar, header=header_idx)
+
     df.columns = df.columns.astype(str).str.strip()
     df = df.loc[:, ~df.columns.duplicated()].copy()
+
+    # Identificación / ID Incidente
+    id_col = [c for c in df.columns if 'identificaci' in c.lower() or 'incidente' in c.lower() or 'aviso' in c.lower()]
+    df['Identificación'] = df[id_col[0]].astype(str) if id_col else df.index.astype(str)
 
     # Excluir DP y ASIG para la vista de WFM si está activo el toggle
     def es_atencion_inmediata(val):
@@ -167,9 +210,9 @@ try:
         s = str(val).strip().upper()
         return s in ['', 'NAN', 'NONE', 'NULL', 'UNDEFINED']
 
-    if excluir_dp_asig and 'Instrucción' in df.columns:
-        df_wfm = df[df['Instrucción'].apply(es_atencion_inmediata)].copy().reset_index(drop=True)
-        # Si la muestra actual no contiene filas en blanco, usamos todo el dataframe para permitir probar las visualizaciones
+    col_instruccion = [c for c in df.columns if 'instrucci' in c.lower()]
+    if excluir_dp_asig and col_instruccion:
+        df_wfm = df[df[col_instruccion[0]].apply(es_atencion_inmediata)].copy().reset_index(drop=True)
         if df_wfm.empty:
             df_wfm = df.copy().reset_index(drop=True)
     else:
@@ -179,30 +222,30 @@ try:
     sub_col = [c for c in df_wfm.columns if 'subestaci' in c.lower()]
     df_wfm['Subestación'] = df_wfm[sub_col[0]].fillna('SIN SUBESTACIÓN').astype(str) if sub_col else 'SIN SUBESTACIÓN'
 
-    circ_col = [c for c in df_wfm.columns if 'circuito normal' in c.lower() or 'circuito actual' in c.lower() or 'circuito' in c.lower()]
+    circ_col = [c for c in df_wfm.columns if 'circuito' in c.lower()]
     df_wfm['Circuito'] = df_wfm[circ_col[0]].fillna('SIN CIRCUITO').astype(str) if circ_col else 'SIN CIRCUITO'
 
     cuad_col = [c for c in df_wfm.columns if 'cuadrilla' in c.lower()]
     df_wfm['Cuadrilla'] = df_wfm[cuad_col[0]].fillna('SIN ASIGNAR').astype(str) if cuad_col else 'SIN ASIGNAR'
 
-    if 'Afectados' in df_wfm.columns:
-        df_wfm['Clientes Sin Servicio'] = pd.to_numeric(df_wfm['Afectados'], errors='coerce').fillna(0).astype(int)
-    elif 'Clientes no restaurados' in df_wfm.columns:
-        df_wfm['Clientes Sin Servicio'] = pd.to_numeric(df_wfm['Clientes no restaurados'], errors='coerce').fillna(0).astype(int)
+    afect_col = [c for c in df_wfm.columns if 'afectado' in c.lower() or 'clientes' in c.lower()]
+    if afect_col:
+        df_wfm['Clientes Sin Servicio'] = pd.to_numeric(df_wfm[afect_col[0]], errors='coerce').fillna(0).astype(int)
     else:
         df_wfm['Clientes Sin Servicio'] = 0
 
     df_wfm['Sector Operativo'] = df_wfm.apply(lambda r: obtener_sector_operativo(r['Circuito'], r['Subestación']), axis=1)
 
     # Parseo de Fechas y Cálculo de Tiempos
-    if 'Fecha de creación' in df_wfm.columns:
-        if 'HORA CREACION' in df_wfm.columns:
-            df_wfm['Fecha_Creacion_DT'] = pd.to_datetime(df_wfm['Fecha de creación'].astype(str) + ' ' + df_wfm['HORA CREACION'].astype(str), errors='coerce')
-        else:
-            df_wfm['Fecha_Creacion_DT'] = pd.to_datetime(df_wfm['Fecha de creación'], errors='coerce')
+    f_col = [c for c in df_wfm.columns if 'fecha' in c.lower() and ('creaci' in c.lower() or 'inicio' in c.lower() or 'reporte' in c.lower())]
+    h_col = [c for c in df_wfm.columns if 'hora' in c.lower() and 'creaci' in c.lower()]
+
+    if f_col and h_col:
+        df_wfm['Fecha_Creacion_DT'] = pd.to_datetime(df_wfm[f_col[0]].astype(str) + ' ' + df_wfm[h_col[0]].astype(str), errors='coerce')
+    elif f_col:
+        df_wfm['Fecha_Creacion_DT'] = pd.to_datetime(df_wfm[f_col[0]], errors='coerce')
     else:
-        f_col = [c for c in df_wfm.columns if 'fecha' in c.lower() and 'creaci' in c.lower()]
-        df_wfm['Fecha_Creacion_DT'] = pd.to_datetime(df_wfm[f_col[0]], errors='coerce') if f_col else pd.NaT
+        df_wfm['Fecha_Creacion_DT'] = pd.NaT
 
     ahora = pd.Timestamp.now()
     df_wfm['Horas_Transcurridas'] = ((ahora - df_wfm['Fecha_Creacion_DT']).dt.total_seconds() / 3600.0).fillna(0).round(2)
@@ -266,7 +309,6 @@ try:
     # PESTAÑA 1: VISTA COMPACTA TIPO IMAGEN
     # =========================================================
     with tab_compacto:
-        # Métricas Rápidas Superiores (Estilo Imagen)
         cnt_avisos = len(df_filtrado)
         cnt_circuitos = df_filtrado['Circuito'].nunique()
         cnt_afectados = int(df_filtrado['Clientes Sin Servicio'].sum())
@@ -283,7 +325,6 @@ try:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # 3 COLUMNAS IDÉNTICAS A LA IMAGEN CORPORATIVA
         col1, col2, col3 = st.columns([1.1, 1.2, 1])
 
         # COLUMNA 1: CANTIDAD DE INCIDENTES POR CIRCUITO
@@ -306,15 +347,16 @@ try:
             st.markdown(f"**Total Afectados:** `{cnt_afectados:,}`")
 
             # Gráfica de Dona por Estado
-            if 'ESTADO' in df_filtrado.columns:
-                df_estado = df_filtrado['ESTADO'].value_counts().reset_index()
+            col_estado = [c for c in df_filtrado.columns if 'estado' in c.lower()]
+            if col_estado:
+                df_estado = df_filtrado[col_estado[0]].value_counts().reset_index()
                 df_estado.columns = ['ESTADO', 'Cantidad']
                 fig_dona = px.pie(df_estado, names='ESTADO', values='Cantidad', hole=0.55, color_discrete_sequence=['#0284c7', '#38bdf8', '#93c5fd'])
                 fig_dona.update_traces(textposition='inside', textinfo='percent')
                 fig_dona.update_layout(height=180, margin=dict(t=5, b=5, l=5, r=5), showlegend=True)
                 st.plotly_chart(fig_dona, use_container_width=True)
 
-        # COLUMNA 3: CONTADOR HORAS REPORTES (MAYOR A MENOR TIEMPO)
+        # COLUMNA 3: CONTADOR HORAS REPORTES
         with col3:
             st.markdown("##### Contador Horas Reportes")
             df_horas_summary = df_filtrado.sort_values(by='Horas_Transcurridas', ascending=False)[['Identificación', 'Contador Horas']].reset_index(drop=True)
@@ -343,7 +385,6 @@ try:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Tabla Detallada KPI 3
         df_kpi_tabla = df_filtrado[[
             'Identificación', 'Sector Operativo', 'Subestación', 'Circuito', 
             'Clientes Sin Servicio', 'Rango Clientes', 'Contador Horas', 
